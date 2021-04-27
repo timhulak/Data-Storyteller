@@ -1,0 +1,324 @@
+---
+title: 'IST-707 Homework 2: Data Storyteller'
+author: "Tim Hulak"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+# Import Libraries 
+library(ggplot2)
+
+# Read in CSV File
+data <- read.csv("data-storyteller.csv")
+
+# Define function to get the mode of a vector
+Mode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+```
+
+
+# Introduction 
+
+Each of 5 schools (A, B, C, D and E) is implementing the same math course this semester, with 35 lessons. There are 30 sections total. The semester is about 3/4 of the way through.
+
+* For each section, the record of the number of students who are:
+  + very ahead (more than 5 lessons ahead)
+  + middling (5 lessons ahead to 0 lessons ahead)
+  + behind (1 to 5 lessons behind)
+  + more behind (6 to 10 lessons behind)
+  + very behind (more than 10 lessons behind)
+  + completed (finished with the course)
+
+The goal of this report is to ingest the data and explore the dataset to get an idea of the performance of students across the 5 schools in the school district. 
+
+# Analysis and Models
+
+## About the Data
+
+```{r}
+head(data)
+```
+figure 1
+
+```{r}
+summary(data)
+```
+figure 2
+
+```{r}
+sum(is.na(data))
+```
+figure 3
+
+The dataset has 8 variables and 30 observations. All of the variables are numeric integers with the exception of the "School" variable, which is a character/text variable that represents which of the 5 schools the record belongs to. This column has been transformed into a factor in order to accurately use it for further analysis (see figure 4). In addition, there appear to be no NA values in the dataset, meaning there are no missing values in the columns (this is verified in the above in both figure 2 and figure 3). It appears that each record in the dataset represents the performance of a school and section. The columns represent the count of students in a performance category for the school and section. 
+
+
+```{r}
+data$School <- factor(data$School)
+
+head(data)
+```
+figure 4
+
+## Analysis
+
+Given the structure of the dataset, some transformation of the data was necessary to explore the performance of students in the math course. 
+
+To begin, an exploratory analysis of each variable in the data is conducted. This is a macro view of the performance for the entire school district thus far in the semester. It is determined that Section 13 is the highest section that has been administered and only 1 of the 5 schools has administered that section. In addition, each of the 5 schools have administered Section 1 of the math course (see figure 5 below).
+
+
+```{r}
+# Create frequency distribution table
+section_freq_table <- as.data.frame(table(data$Section))
+# Rename the columns
+colnames(section_freq_table) <- c("Section","Freq")
+# Visualize the Frequency Distribution table as a column chart 
+ggplot(section_freq_table, aes(x=Section, y=Freq)) + geom_bar(stat = "identity") + ggtitle("Sections Across Scool District")
+```
+figure 5
+
+To gain a better understanding of the Sections and across the district, a frequency bar chart can be used to see that `r sum(data$Behind..1.5)` students are behind in the sections across the 5 schools (see figure 6). 
+```{r}
+# Create Frequency Table for category totals 
+category_frequency <- data.frame(
+  "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(data$Very.Ahead..5),sum(data$Middling..0),sum(data$Behind..1.5),sum(data$More.Behind..6.10),sum(data$Very.Behind..11),sum(data$Completed))
+)
+
+# Calculate totals 
+total_behind <- sum(data$Behind..1.5) + sum(data$More.Behind..6.10) + sum(data$Very.Behind..11)
+total_ahead <- sum(data$Very.Ahead..5) + sum(data$Middling..0)
+total_completed <- sum(data$Completed)
+  
+# Visualize the category totals in a c
+ggplot(category_frequency, aes(x=Category, y=Freq)) + geom_bar(stat = "identity") + ggtitle("Categories Across Scool District") + coord_flip()
+```
+figure
+
+Overall, `r total_behind` students are either Behind, More Behind, or Very Behind (`r round(total_behind/sum(category_frequency$Freq),3)*100`%). `r total_ahead` students are either Very Ahead or Middling (`r round(total_ahead/sum(category_frequency$Freq),3)*100`%). Finally, `r total_completed` students have completed a math section (`r round(total_completed/sum(category_frequency$Freq),3)*100`%) (see figure 7)
+```{r}
+# Simple Pie Chart
+slices <- c(round(total_behind/sum(category_frequency$Freq),3)*100, round(total_ahead/sum(category_frequency$Freq),3)*100, round(total_completed/sum(category_frequency$Freq),3)*100)
+lbls <- c("Behind", "Ahead", "Completed")
+pie(slices, labels = lbls, main="Status of Students in Math Course Sections",col=rainbow(length(lbls)))
+```
+figure 7
+
+
+When viewed in a cross-tab, it is determined that School A has administered sections 1-13, School B has administered sections 1-12, School C has only administered sections 1-3, and both School D and School E have only administered section 1. This is confirmed by the Section mode, or the most frequently occurring value, being `r Mode(data$Section)` and viewing the cross-tab below (see figure 8).  
+```{r}
+table(data$School, data$Section)
+```
+figure 8
+
+
+```{r}
+simplified_data <- data.frame(
+  "School" = data$School,
+  "Section" = data$Section,
+  "Ahead" = data$Very.Ahead..5 + data$Middling..0,
+  "Behind" = data$Behind..1.5 + data$More.Behind..6.10 + data$Very.Behind..11,
+  "Completed" = data$Completed
+)
+
+sum_aggregate_section <- aggregate(cbind(simplified_data$Ahead, simplified_data$Behind, simplified_data$Completed), by = list(Group.region = simplified_data$Section), FUN=sum)
+colnames(sum_aggregate_section) <- c("Section","SUM.Ahead", "SUM.Behind","SUM.Completed")
+
+
+
+sum_aggregate_section
+```
+figure 9.1
+
+```{r}
+
+sum_aggregate_school <- aggregate(cbind(simplified_data$Ahead, simplified_data$Behind, simplified_data$Completed), by = list(Group.region = simplified_data$School), FUN=sum)
+colnames(sum_aggregate_school) <- c("School","SUM.Ahead", "SUM.Behind","SUM.Completed")
+
+sum_aggregate_school
+total_students <- sum(sum_aggregate_school[2:4])
+total_sums <- rowSums(sum_aggregate_school[,2:4])
+A_Sums <- total_sums[1]
+B_Sums <- total_sums[2]
+C_Sums <- total_sums[3]
+D_Sums <- total_sums[4]
+E_Sums <- total_sums[5]
+```
+
+
+figure 9.2
+
+In order to drill down further at a micro level, the larger dataset was sliced into 5 smaller datasets which represent each school. The performance of each individual school can be seen in figures 10 - 14 below.  
+
+```{r}
+# Separate and shape data for plots
+
+# School A
+school_A <- data[which(data$School == "A"),]
+school_A_plot_data <- data.frame(
+   "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(school_A$Very.Ahead..5),
+             sum(school_A$Middling..0),
+             sum(school_A$Behind..1.5),
+             sum(school_A$More.Behind..6.10),
+             sum(school_A$Very.Behind..11),
+             sum(school_A$Completed)
+             )
+)
+  
+# School B
+
+school_B <- data[which(data$School == "B"),]
+school_B_plot_data <- data.frame(
+   "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(school_B$Very.Ahead..5),
+             sum(school_B$Middling..0),
+             sum(school_B$Behind..1.5),
+             sum(school_B$More.Behind..6.10),
+             sum(school_B$Very.Behind..11),
+             sum(school_B$Completed)
+             )
+)
+
+# School C
+
+school_C <- data[which(data$School == "C"),]
+school_C_plot_data <- data.frame(
+   "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(school_C$Very.Ahead..5),
+             sum(school_C$Middling..0),
+             sum(school_C$Behind..1.5),
+             sum(school_C$More.Behind..6.10),
+             sum(school_C$Very.Behind..11),
+             sum(school_C$Completed)
+             )
+)
+
+# School D
+
+school_D <- data[which(data$School == "D"),]
+school_D_plot_data <- data.frame(
+   "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(school_D$Very.Ahead..5),
+             sum(school_D$Middling..0),
+             sum(school_D$Behind..1.5),
+             sum(school_D$More.Behind..6.10),
+             sum(school_D$Very.Behind..11),
+             sum(school_D$Completed)
+             )
+)
+
+# School E
+
+school_E <- data[which(data$School == "E"),]
+school_E_plot_data <- data.frame(
+   "Category"  = c("VeryAhead","Middling","Behind","More Behind","Very Behind","Completed"),
+  "Freq" = c(sum(school_E$Very.Ahead..5),
+             sum(school_E$Middling..0),
+             sum(school_E$Behind..1.5),
+             sum(school_E$More.Behind..6.10),
+             sum(school_E$Very.Behind..11),
+             sum(school_E$Completed)
+             )
+)
+```
+
+
+```{r}
+ggplot(school_A_plot_data, aes(x=Category, y=Freq)) + geom_bar(stat ="identity") + ggtitle("Categories Across Scool A") + coord_flip()
+```
+figure 10
+
+```{r}
+ggplot(school_B_plot_data, aes(x=Category, y=Freq)) + geom_bar(stat ="identity") + ggtitle("Categories Across Scool B") + coord_flip()
+```
+figure 11
+
+
+```{r}
+ggplot(school_C_plot_data, aes(x=Category, y=Freq)) + geom_bar(stat ="identity") + ggtitle("Categories Across Scool C") + coord_flip()
+```
+figure 12
+
+
+```{r}
+ggplot(school_D_plot_data, aes(x=Category, y=Freq)) + geom_bar(stat ="identity") + ggtitle("Categories Across Scool D") + coord_flip()
+```
+figure 13
+
+
+```{r}
+ggplot(school_E_plot_data, aes(x=Category, y=Freq)) + geom_bar(stat ="identity") + ggtitle("Categories Across Scool E") + coord_flip()
+```
+figure 14
+
+
+# Results
+
+Upon closer inspection of the larger dataset, it seems that school A and School B make up 83.33% of the total sampled schools. This means that Schools C, D, and E are drastically underrepresented (as seen in figure 10). 
+```{r}
+table(data$School)
+```
+figure 10
+
+Figures 9.1 and 9.2 demonstrate that each school has a large portion of their students are behind in some way. In total, `r round(sum(sum_aggregate_school$SUM.Ahead) / total_students * 100, 2)`% of students are Ahead in some way, `r round(sum(sum_aggregate_school$SUM.Completed) / total_students * 100, 2)`% of students , and `r round(sum(sum_aggregate_school$SUM.Behind) / total_students * 100, 2)`% of students are behind in some way.
+
+When examined individually, the following breakdown for performance in the math course per school against the entire district is as follows:
+
+
+### School vs. Entire Distrct
+* School A
+  + Ahead: `r round(113/total_students*100,2)`%
+  + Completed: `r round(142/total_students*100,2)`%
+  + Behind: `r round(677/total_students*100,2)`%
+* School B
+  + Ahead: `r round(84/total_students*100,2)`%
+  + Completed: `r round(125/total_students*100,2)`%
+  + Behind: `r round(237/total_students*100,2)`%
+* School C
+  + Ahead: `r round(11/total_students*100,2)`%
+  + Completed: `r round(19/total_students*100,2)`%
+  + Behind: `r round(55/total_students*100,2)`%
+* School D
+  + Ahead: `r round(3/total_students*100,2)`%
+  + Completed: `r round(3/total_students*100,2)`%
+  + Behind: `r round(16/total_students*100,2)`%
+* School E
+  + Ahead: `r round(11/total_students*100,2)`%
+  + Completed: `r round(27/total_students*100,2)`%
+  + Behind: `r round(78/total_students*100,2)`%
+  
+  
+### School vs. Self
+* School A
+  + Ahead: `r round(113/A_Sums*100,2)`%
+  + Completed: `r round(142/A_Sums*100,2)`%
+  + Behind: `r round(677/A_Sums*100,2)`%
+* School B
+  + Ahead: `r round(84/B_Sums*100,2)`%
+  + Completed: `r round(125/B_Sums*100,2)`%
+  + Behind: `r round(237/B_Sums*100,2)`%
+* School C
+  + Ahead: `r round(11/C_Sums*100,2)`%
+  + Completed: `r round(19/C_Sums*100,2)`%
+  + Behind: `r round(55/C_Sums*100,2)`%
+* School D
+  + Ahead: `r round(3/D_Sums*100,2)`%
+  + Completed: `r round(3/D_Sums*100,2)`%
+  + Behind: `r round(16/D_Sums*100,2)`%
+* School E
+  + Ahead: `r round(11/E_Sums*100,2)`%
+  + Completed: `r round(27/E_Sums*100,2)`%
+  + Behind: `r round(78/E_Sums*100,2)`%
+  
+# Conclusions
+
+All of the schools in our district appear to be off-target in administering the sections of the math course. With the semester being 3/4 of the way through, `r 30 * .75` sections are expected to have been administered to the students. However, only School A has administered up to section 13. Across the schools, only Section 1 has been administered by all 5 schools. 25 students are ahead of Section 1 and 60 students have completed Section 1. However, 209 students are behind in Section 1. This is not to mention any of the other Sections. It is reasonable to conclude that our new math course needs to be evaluated and the curriculum may need to be redesigned because it may be too difficult for the student body. 
+
+
+
